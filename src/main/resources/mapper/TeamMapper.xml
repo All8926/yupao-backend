@@ -1,0 +1,92 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.mapper.TeamMapper">
+
+    <resultMap id="BaseResultMap" type="com.example.model.domain.Team">
+            <id property="id" column="id" jdbcType="BIGINT"/>
+            <result property="name" column="name" jdbcType="VARCHAR"/>
+            <result property="description" column="description" jdbcType="VARCHAR"/>
+            <result property="maxNum" column="maxNum" jdbcType="INTEGER"/>
+            <result property="expireTime" column="expireTime" jdbcType="TIMESTAMP"/>
+            <result property="userId" column="userId" jdbcType="BIGINT"/>
+            <result property="status" column="status" jdbcType="INTEGER"/>
+            <result property="password" column="password" jdbcType="VARCHAR"/>
+            <result property="createTime" column="createTime" jdbcType="TIMESTAMP"/>
+            <result property="updateTime" column="updateTime" jdbcType="TIMESTAMP"/>
+            <result property="isDelete" column="isDelete" jdbcType="TINYINT"/>
+    </resultMap>
+
+    <resultMap id="teamUserResultMap" type="com.example.model.vo.TeamUserVO">
+        <id property="id" column="id"/>
+        <result property="name" column="name"/>
+        <result property="description" column="description"/>
+        <result property="maxNum" column="maxNum"/>
+        <result property="expireTime" column="expireTime"/>
+        <result property="userId" column="userId"/>
+        <result property="status" column="status"/>
+        <result property="createTime" column="createTime"/>
+        <result property="updateTime" column="updateTime"/>
+        <collection property="userList" ofType="com.example.model.vo.UserVO">
+            <id property="id" column="user_id"/>
+            <result property="username" column="username"/>
+            <result property="userAccount" column="userAccount"/>
+            <result property="avatarUrl" column="avatarUrl"/>
+            <result property="gender" column="gender"/>
+            <result property="phone" column="phone"/>
+            <result property="email" column="email"/>
+            <result property="userStatus" column="userStatus"/>
+            <result property="createTime" column="user_createTime"/>
+            <result property="updateTime" column="user_updateTime"/>
+            <result property="userRole" column="userRole"/>
+            <result property="planetCode" column="planetCode"/>
+            <result property="tags" column="tags"/>
+            <result property="profile" column="profile"/>
+        </collection>
+    </resultMap>
+
+    <sql id="Base_Column_List">
+        id,name,description,
+        maxNum,expireTime,userId,
+        status,password,createTime,
+        updateTime,isDelete
+    </sql>
+
+    <select id="getTeamList" resultMap="teamUserResultMap" resultType="com.example.model.vo.TeamUserVO">
+        SELECT
+        t.id, t.name, t.description, t.maxNum, t.expireTime, t.userId, t.status, t.createTime, t.updateTime,
+        u.id as user_id, u.username, u.userAccount, u.avatarUrl, u.gender, u.phone, u.email, u.userStatus, u.createTime as user_createTime, u.updateTime as user_updateTime, u.userRole, u.planetCode, u.tags, u.profile
+        FROM team t
+                 LEFT JOIN user_team ut ON t.id = ut.teamId
+                 LEFT JOIN user u ON ut.userId = u.id
+        <where>
+            (t.expireTime > now() or t.expireTime is null)
+            and t.isDelete = 0 and ut.isDelete = 0
+            <if test="name != null">
+               and t.name like concat('%',#{name},'%')
+            </if>
+            <if test="idList != null and !idList.isEmpty()">
+                 and t.id in
+                <foreach item="id" collection="idList" open="(" close=")" separator=",">
+                    #{id}
+                </foreach>
+            </if>
+            <if test="description != null">
+              and  t.description like concat('%',#{description},'%')
+            </if>
+            <if test="maxNum != null and maxNum > 1">
+               and t.maxNum = #{maxNum}
+            </if>
+            <if test="status != null and status &gt;= 0 and status &lt;= 2">
+                and t.status = #{status}
+            </if>
+            <if test="userId != null and userId > 0">
+                and t.userId = #{userId}
+            </if>
+            <if test="searchText != null">
+                and (t.description like concat('%',#{searchText},'%') or t.name like concat('%',#{searchText},'%'))
+            </if>
+        </where>
+    </select>
+</mapper>
