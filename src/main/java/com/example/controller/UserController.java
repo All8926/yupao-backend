@@ -163,6 +163,18 @@ public class UserController {
         return ResultUtils.success(userPage);
     }
 
+    @ApiOperation("匹配用户")
+    @GetMapping("/match")
+    public BaseResponse<List<User>> matchUser(Long num ,HttpServletRequest request) {
+        if(num == null || num < 1){
+            throw new BusinessException(ErrorCode.PARAMS_ERROR);
+        }
+        User loginUser = userService.getLoginUser(request);
+
+       List<User> userList = userService.matchUsers(num,loginUser);
+        return ResultUtils.success(userList);
+    }
+
 
     /**
      * 根据标签搜索用户

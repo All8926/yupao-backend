@@ -7,6 +7,10 @@ import com.example.exception.BusinessException;
 import com.example.model.domain.User;
 import com.example.service.UserService;
 import com.example.mapper.UserMapper;
+import com.example.utils.AlgorithmUtil;
+import com.google.gson.Gson;
+import com.google.gson.reflect.TypeToken;
+import javafx.util.Pair;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.stereotype.Service;
@@ -15,10 +19,11 @@ import org.springframework.util.DigestUtils;
 
 import javax.annotation.Resource;
 import javax.servlet.http.HttpServletRequest;
-import java.util.List;
+import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import static com.example.constant.UserConstant.ADMIN_ROLE;
 import static com.example.constant.UserConstant.USER_LOGIN_STATE;
@@ -252,26 +257,25 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
     }
 
     /**
-     *
-     * @param user 要修改用户
+     * @param user      要修改用户
      * @param loginUser 当前登录用户
      * @return
      */
     @Override
-    public int updateUser(User user, User loginUser){
+    public int updateUser(User user, User loginUser) {
 
         Long userId = user.getId();
-        if(userId == null || userId <= 0){
+        if (userId == null || userId <= 0) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
         }
         User oldUser = userMapper.selectById(userId);
-        if(oldUser == null){
-            throw new BusinessException(ErrorCode.NULL_ERROR,"用户不存在");
+        if (oldUser == null) {
+            throw new BusinessException(ErrorCode.NULL_ERROR, "用户不存在");
         }
 
         // 如果是管理，则可以修改任意用户
         // 如果不是管理，只能修改自己的信息
-        if(!isAdmin(loginUser) && loginUser.getId() != user.getId()){
+        if (!isAdmin(loginUser) && loginUser.getId() != user.getId()) {
             throw new BusinessException(ErrorCode.NO_AUTH);
         }
         return userMapper.updateById(user);
@@ -288,21 +292,82 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
         User user = (User) userObj;
         return user != null && user.getUserRole() == ADMIN_ROLE;
     }
+
     public boolean isAdmin(User user) {
         return user != null && user.getUserRole() == ADMIN_ROLE;
     }
 
     /**
      * 获取当前登录用户
+     *
      * @param request
      * @return
      */
-    public User getLoginUser(HttpServletRequest request){
+    public User getLoginUser(HttpServletRequest request) {
         Object loginUser = request.getSession().getAttribute(USER_LOGIN_STATE);
-        if(loginUser == null){
+        if (loginUser == null) {
             throw new BusinessException(ErrorCode.NOT_LOGIN);
         }
         return (User) loginUser;
+    }
+
+    /**
+     * 匹配用户
+     *
+     * @param num
+     * @param loginUser
+     * @return
+     */
+    @Override
+    public List<User> matchUsers(Long num, User loginUser) {
+        String loginUserTags = loginUser.getTags();
+        Gson gson = new Gson();
+        List<String> loginUserTagList = gson.fromJson(loginUserTags, new TypeToken<List<String>>() {
+        }.getType());
+        loginUserTagList = Optional.ofNullable(loginUserTagList).orElse(new ArrayList<>());
+
+        // 获取所有用户
+        QueryWrapper<User> userQueryWrapper = new QueryWrapper<>();
+        userQueryWrapper.select("id", "tags");
+        userQueryWrapper.isNotNull("tags");
+        List<User> userList = this.list(userQueryWrapper);
+
+        List<Pair<User, Long>> pairList = new ArrayList<>();
+
+        // 遍历所有用户标签，取出每个用户的标签与登录用户进行比较相识度
+        for (int i = 0; i < userList.size(); i++) {
+            User user = userList.get(i);
+            String userTags = user.getTags();
+            long userId = loginUser.getId();
+            if (StringUtils.isBlank(userTags) || userId == user.getId()) {
+                continue;
+            }
+
+            List<String> userTagList = gson.fromJson(userTags, new TypeToken<List<String>>() {
+            }.getType());
+            // 计算分数
+            long distance = AlgorithmUtil.minDistance(loginUserTagList, userTagList);
+            pairList.add(new Pair<>(user, distance));
+        }
+
+        // 按编辑距离由小到大排序
+        List<Pair<User, Long>> topPairUserList = pairList.stream()
+                .sorted((a, b) -> (int) (a.getValue() - b.getValue()))
+                .limit(num)
+                .collect(Collectors.toList());
+        List<Long> userIdList = topPairUserList.stream().map(pair -> pair.getKey().getId()).collect(Collectors.toList());
+
+        userQueryWrapper = new QueryWrapper<>();
+        userQueryWrapper.in("id",userIdList);
+        Map<Long, List<User>> userIdUserListMap = this.list(userQueryWrapper).stream()
+                .map(user -> getSafetyUser(user))
+                .collect(Collectors.groupingBy(User::getId));
+
+        // 重新排序
+        ArrayList<User> finalUserList = new ArrayList<>();
+        userIdList.forEach(userId -> finalUserList.add(userIdUserListMap.get(userId).get(0)));
+        return finalUserList;
+
     }
 }
 
