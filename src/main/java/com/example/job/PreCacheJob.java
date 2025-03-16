@@ -51,7 +51,6 @@ public class PreCacheJob {
              */
             if(lock.tryLock(0, -1, TimeUnit.MILLISECONDS)){
                 System.out.println("getLock:"+Thread.currentThread().getId());
-                Thread.sleep(30000);
                 for (Long userId : mainUserList){
                     String redisKey = String.format("yupao:user:recommend:%s",userId);
                     ValueOperations valueOperations = redisTemplate.opsForValue();

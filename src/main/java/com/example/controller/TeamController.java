@@ -24,6 +24,8 @@ import javax.annotation.Resource;
 import javax.servlet.http.HttpServletRequest;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 @RestController
@@ -73,7 +75,7 @@ public class TeamController {
         }
         long id = deleteRequest.getId();
         User loginUser = userService.getLoginUser(request);
-        boolean result = teamService.deleteTeam(id,loginUser);
+        boolean result = teamService.deleteTeam(id, loginUser);
         return ResultUtils.success(result);
     }
 
@@ -144,6 +146,34 @@ public class TeamController {
     public BaseResponse<List<TeamUserVO>> listTeamAndCreateUser(TeamQuery teamQuery, HttpServletRequest request) {
         boolean isAdmin = userService.isAdmin(request);
         List<TeamUserVO> teamUserList = teamService.listTeamAndCreateUser(teamQuery, isAdmin);
+        // 队伍id列表
+        List<Long> teamIdList = teamUserList.stream().map(TeamUserVO::getId).collect(Collectors.toList());
+
+        // 1.查询用户是否已加入队伍
+        try {
+            QueryWrapper<UserTeam> queryWrapper = new QueryWrapper<>();
+            User loginUser = userService.getLoginUser(request);
+            long userId = loginUser.getId();
+            queryWrapper.eq("userId", userId);
+            queryWrapper.in("teamId", teamIdList);
+            // 我所加入的队伍id
+            Set<Long> joinTeamIdList = userTeamService.list(queryWrapper).stream().map(UserTeam::getTeamId).collect(Collectors.toSet());
+
+            // 判断我是否已加入队伍
+            teamUserList.forEach(teamUserVO -> {
+                boolean hasJoinTeam = joinTeamIdList.contains(teamUserVO.getId());
+                teamUserVO.setHasJoinTeam(hasJoinTeam);
+            });
+        } catch (Exception e) {}
+
+        // 2.查询队伍已加入的人数
+        QueryWrapper<UserTeam> queryUserTeamWrapper = new QueryWrapper<>();
+        queryUserTeamWrapper.in("teamId",teamIdList);
+        // teamId => UserTeamList
+        Map<Long, List<UserTeam>> teamIdUserTeamListMap = userTeamService.list(queryUserTeamWrapper).stream().collect(Collectors.groupingBy(UserTeam::getTeamId));
+        teamUserList.forEach(teamUserVO -> {
+            teamUserVO.setHasJoinTeamNum(teamIdUserTeamListMap.getOrDefault(teamUserVO.getId(),new ArrayList<>()).size());
+        });
         return ResultUtils.success(teamUserList);
     }
 
@@ -211,7 +241,7 @@ public class TeamController {
      */
     @ApiOperation("我创建的队伍")
     @GetMapping("/list/my/create")
-    public BaseResponse<List<TeamUserVO>> listTeamAdd(  HttpServletRequest request) {
+    public BaseResponse<List<TeamUserVO>> listTeamAdd(HttpServletRequest request) {
         User loginUser = userService.getLoginUser(request);
         TeamQuery teamQuery = new TeamQuery();
         teamQuery.setUserId(loginUser.getId());
@@ -227,14 +257,14 @@ public class TeamController {
      */
     @ApiOperation("我加入的队伍")
     @GetMapping("/list/my/join")
-    public BaseResponse<List<TeamUserVO>> listTeamJoin(  HttpServletRequest request) {
+    public BaseResponse<List<TeamUserVO>> listTeamJoin(HttpServletRequest request) {
         User loginUser = userService.getLoginUser(request);
         QueryWrapper<UserTeam> queryWrapper = new QueryWrapper<>();
 
-        queryWrapper.eq("userId",loginUser.getId());
+        queryWrapper.eq("userId", loginUser.getId());
         List<UserTeam> userTeamList = userTeamService.list(queryWrapper);
 
-        List<Long> teamIdList =  userTeamList.stream().map(item -> item.getTeamId()).distinct().collect(Collectors.toList());
+        List<Long> teamIdList = userTeamList.stream().map(item -> item.getTeamId()).distinct().collect(Collectors.toList());
 
         TeamQuery teamQuery = new TeamQuery();
         teamQuery.setIdList(teamIdList);
